@@ -1,0 +1,1 @@
+Made a Neural Network, with only numpy, pandas (for data ingestion) and matplotlib (to show the images) for predictions of the dataset MNIST. Based on the kaggle post by Samson Zhang on https://www.kaggle.com/code/wwsalmon/simple-mnist-nn-from-scratch-numpy-no-tf-keras.
