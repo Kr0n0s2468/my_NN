@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from matplotlib.widgets import Button, Slider
+from scipy.ndimage import zoom
+
 
 #MNIST dataset, with training images of 28*28=784, cada pixel com valor entre 0 e 255 (preto a branco), 10 classes, since 10 digits
 
@@ -136,10 +139,12 @@ def test_prediction(index, W1, b1, W2, b2):
 def save_model(W1, b1, W2, b2, accuracy):
     np.savez("model_weights.npz", W1=W1, b1=b1, W2=W2, b2=b2, accuracy=accuracy)
     
-def use_saved(X):
-    def load_model():
+def load_model():
         data = np.load("model_weights.npz")
-        return data['W1'], data['b1'], data['W2'], data['b2'], data['accuracy'].item()
+        W1_flat, b1_flat, W2_flat, b2_flat, accuracy = data['W1'], data['b1'], data['W2'], data['b2'], data['accuracy'].item()  
+        return W1_flat, b1_flat, W2_flat, b2_flat, accuracy
+    
+def use_saved(X):
     W1_flat, b1_flat, W2_flat, b2_flat, accuracy = load_model()
     
     W1 = W1_flat.reshape((10, 784))
@@ -158,7 +163,51 @@ def run_model(X_train,Y_train,epochs,lr):
 def run_saved(X):
     predictions, accuracy = use_saved(X)
     print("Accuracy:", accuracy)
-    return predictions
+    return print(predictions)
     
 #run_model(X_train,Y_train,1000,0.1)
 #run_saved(X_dev)
+
+def test_model(W1, b1, W2, b2, test_path='./digit-recognizer/test.csv'):
+    
+    test_data = pd.read_csv(test_path).to_numpy().T  
+    X_test = test_data / 255.0  
+ 
+    _, _, _, A2_test = forward_prop(W1, b1, W2, b2, X_test)
+    predictions = get_predictions(A2_test)
+
+    return print(predictions)
+
+#test_model(*load_model()[:-1])
+
+
+def display_predictions_grid(X_test, predictions, img_size=28, cols=10, max_images=50):
+    num_samples = min(X_test.shape[1], max_images)
+    rows = math.ceil(num_samples / cols)
+    
+    plt.figure(figsize=(cols * 2, rows * 2))
+    
+    for i in range(num_samples):
+        img = X_test[:, i].reshape(img_size, img_size)
+        pred = predictions[i]
+        
+        plt.subplot(rows, cols, i + 1)
+        plt.imshow(img, cmap='gray')
+        plt.title(f'Pred: {pred}', fontsize=8)
+        plt.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
+    
+def test_model_and_show_grid(W1, b1, W2, b2, test_path='./digit-recognizer/test.csv'):
+    test_data = pd.read_csv(test_path).to_numpy()
+    X_test = test_data.T / 255.0
+    
+    _, _, _, A2_test = forward_prop(W1, b1, W2, b2, X_test)
+    predictions = get_predictions(A2_test)
+    
+    display_predictions_grid(X_test, predictions)
+    return predictions
+#test_model_and_show_grid(*load_model()[:-1])
+
+
