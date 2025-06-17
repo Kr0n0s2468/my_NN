@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-
 #MNIST dataset, with training images of 28*28=784, cada pixel com valor entre 0 e 255 (preto a branco), 10 classes, since 10 digits
 
 #so 2 layers: 1 input layer with 784 units, 1 hiden with 10 and a last one with 10  
@@ -37,8 +36,6 @@ Y_train = data_train[0]
 X_train = data_train[1:n]
 X_train = X_train / 255.
 _,m_train = X_train.shape
-
-#print(X_train[:,0 ].shape)
 
 ##### NN #####
 
@@ -96,24 +93,25 @@ def get_predictions(A2):
     return np.argmax(A2,0)
 
 def get_accuracy(predictions,Y):
-    print(predictions,Y)
+    #print(predictions,Y)
     return np.sum(predictions == Y) / Y.size
+
+from tqdm import tqdm
 
 def gradient_descent(X, Y, iterations, alpha):
     W1, b1, W2, b2 = init_params()
-    for i in range(iterations):
+    for i in tqdm(range(iterations), desc="Training"):
         Z1, A1, Z2, A2 = forward_prop(W1, b1, W2, b2, X)
         dW1, db1, dW2, db2 = back_prop(Z1, A1, Z2, A2, W2, X, Y)
         W1, b1, W2, b2 = update_params(W1, b1, W2, b2, dW1, db1, dW2, db2, alpha)
-        if i % 10 == 0:
-            print("Iteration: ", i)
-            print("Accuracy: ", get_accuracy(get_predictions(A2), Y))
-    return W1, b1, W2, b2
-        
     
-W1, b1, W2, b2 = gradient_descent(X_train, Y_train, 500, 0.1) #main loop
+        if i % 10 == 0:
+            accuracy = get_accuracy(get_predictions(A2), Y)
+            tqdm.write(f"Iteration {i}: Accuracy = {accuracy:.4f}")
 
-
+    accuracy = get_accuracy(get_predictions(A2), Y)
+    return W1, b1, W2, b2, accuracy
+        
 #testing_predicitons
 
 def make_predictions(X, W1, b1, W2, b2):
@@ -133,9 +131,61 @@ def test_prediction(index, W1, b1, W2, b2):
     plt.imshow(current_image, interpolation='nearest')
     plt.show()
     
-#test_prediction(8, W1, b1, W2, b2) 
+
+def save_model(W1, b1, W2, b2, accuracy):
+    W1_flat = W1.flatten()
+    b1_flat = b1.flatten()
+    W2_flat = W2.flatten()
+    b2_flat = b2.flatten()
+
+    max_len = max(len(W1_flat), len(b1_flat), len(W2_flat), len(b2_flat))
+
+    def pad(arr):
+        return np.pad(arr, (0, max_len - len(arr)), constant_values=np.nan)
+
+    # Accuracy column: fill first value, rest NaN
+    accuracy_col = np.full((max_len,), np.nan)
+    accuracy_col[0] = accuracy
+
+    data = {
+        'W1': pad(W1_flat),
+        'b1': pad(b1_flat),
+        'W2': pad(W2_flat),
+        'b2': pad(b2_flat),
+        'accuracy': accuracy_col
+    }
+
+    df = pd.DataFrame(data)
+    df.to_csv('saved_model.csv', index=False)
+    
+def use_saved(X):
+    def open_model():
+        df = pd.read_csv('saved_model.csv')
+        W1 = df['W1'].dropna().to_numpy()
+        b1 = df['b1'].dropna().to_numpy()
+        W2 = df['W2'].dropna().to_numpy()
+        b2 = df['b2'].dropna().to_numpy()
+        accuracy = df['accuracy'].dropna().to_numpy()[0] if 'accuracy' in df.columns else None
+        return W1, b1, W2, b2, accuracy
+    W1_flat, b1_flat, W2_flat, b2_flat, accuracy = open_model()
+    
+    W1 = W1_flat.reshape((10, 784))
+    b1 = b1_flat.reshape((10, 1))
+    W2 = W2_flat.reshape((10, 10))
+    b2 = b2_flat.reshape((10, 1))
+    
+    return make_predictions(X, W1, b1, W2, b2), accuracy
 
 
-
-dev_predictions = make_predictions(X_dev, W1, b1, W2, b2)
-print(get_accuracy(dev_predictions, Y_dev))
+def run_model(X_train,Y_train,epochs,lr):
+    W1, b1, W2, b2, accuracy = gradient_descent(X_train, Y_train, epochs, lr)
+    print("Accuracy:", accuracy)
+    save_model(W1, b1, W2, b2, accuracy)
+    
+def run_saved(X):
+    use_saved(X)
+    _ , accuracy = use_saved(X_dev)
+    print("Accuracy:", accuracy)
+    
+#run_model(X_train,Y_train,2000,0.1)
+#run_saved(X_dev)
