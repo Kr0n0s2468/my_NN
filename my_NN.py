@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from tqdm import tqdm
 
 #MNIST dataset, with training images of 28*28=784, cada pixel com valor entre 0 e 255 (preto a branco), 10 classes, since 10 digits
 
@@ -17,32 +18,32 @@ from matplotlib import pyplot as plt
 
 ##### DATA #####
 
+# Load and shuffle
 data = pd.read_csv('./digit-recognizer/train.csv')
+data = data.sample(frac=1, random_state=42).reset_index(drop=True)  # shuffle with reproducibility
 
-#print(data.head()) 
+# Split label and features
+Y_all = data['label'].to_numpy()
+X_all = data.drop('label', axis=1).to_numpy()
 
-data = np.array(data)
-m , n = data.shape
-np.random.shuffle(data)
+# Normalize
+X_all = X_all.T / 255.0
+Y_all = Y_all
 
-data_dev = data[0:1000].T
+# Split train/dev
+X_dev = X_all[:, :1000]
+Y_dev = Y_all[:1000]
+X_train = X_all[:, 1000:]
+Y_train = Y_all[1000:]
 
-Y_dev = data_dev[0]
-X_dev = data_dev[1:n]
-X_dev = X_dev / 255.
-
-data_train = data[1000:m].T
-Y_train = data_train[0]
-X_train = data_train[1:n]
-X_train = X_train / 255.
-_,m_train = X_train.shape
-
+# For completeness
+_, m_train = X_train.shape
 ##### NN #####
 
 def init_params(): #initialize parameters
-    W1 = np.random.rand(10,784) - 0.5 #generates random values between 0 and 1
+    W1 = np.random.randn(10, 784) * np.sqrt(2. / 784)
     b1 = np.random.rand(10,1) - 0.5
-    W2 = np.random.rand(10,10) - 0.5
+    W2 = np.random.randn(10, 10) * np.sqrt(2. / 10)
     b2 = np.random.rand(10,1) - 0.5
     return W1, b1, W2, b2
 
@@ -76,10 +77,10 @@ def back_prop(Z1, A1, Z2, A2, W2, X, Y):
     one_hot_Y = one_hot(Y)
     dZ2 = A2 - one_hot_Y
     dW2 = 1 / m * dZ2.dot(A1.T)
-    db2 = 1 / m * np.sum(dZ2)
+    db2 = 1 / m * np.sum(dZ2, axis=1, keepdims=True)
     dZ1 = W2.T.dot(dZ2) * deriv_ReLU(Z1)
     dW1 = 1 / m * dZ1.dot(X.T)
-    db1 = 1 / m * np.sum(dZ1)
+    db1 = 1 / m * np.sum(dZ1, axis=1, keepdims=True)
     return dW1, db1, dW2, db2
 
 def update_params(W1, b1, W2, b2, dW1, db1, dW2, db2, alpha):
@@ -96,8 +97,6 @@ def get_accuracy(predictions,Y):
     #print(predictions,Y)
     return np.sum(predictions == Y) / Y.size
 
-from tqdm import tqdm
-
 def gradient_descent(X, Y, iterations, alpha):
     W1, b1, W2, b2 = init_params()
     for i in tqdm(range(iterations), desc="Training"):
@@ -106,8 +105,10 @@ def gradient_descent(X, Y, iterations, alpha):
         W1, b1, W2, b2 = update_params(W1, b1, W2, b2, dW1, db1, dW2, db2, alpha)
     
         if i % 10 == 0:
-            accuracy = get_accuracy(get_predictions(A2), Y)
-            tqdm.write(f"Iteration {i}: Accuracy = {accuracy:.4f}")
+            train_acc = get_accuracy(get_predictions(A2), Y)
+            _, _, _, A2_dev = forward_prop(W1, b1, W2, b2, X_dev)
+            dev_acc = get_accuracy(get_predictions(A2_dev), Y_dev)
+            tqdm.write(f"Iteration {i}: Train Acc = {train_acc:.4f}, Val Acc = {dev_acc:.4f}")
 
     accuracy = get_accuracy(get_predictions(A2), Y)
     return W1, b1, W2, b2, accuracy
@@ -133,41 +134,13 @@ def test_prediction(index, W1, b1, W2, b2):
     
 
 def save_model(W1, b1, W2, b2, accuracy):
-    W1_flat = W1.flatten()
-    b1_flat = b1.flatten()
-    W2_flat = W2.flatten()
-    b2_flat = b2.flatten()
-
-    max_len = max(len(W1_flat), len(b1_flat), len(W2_flat), len(b2_flat))
-
-    def pad(arr):
-        return np.pad(arr, (0, max_len - len(arr)), constant_values=np.nan)
-
-    # Accuracy column: fill first value, rest NaN
-    accuracy_col = np.full((max_len,), np.nan)
-    accuracy_col[0] = accuracy
-
-    data = {
-        'W1': pad(W1_flat),
-        'b1': pad(b1_flat),
-        'W2': pad(W2_flat),
-        'b2': pad(b2_flat),
-        'accuracy': accuracy_col
-    }
-
-    df = pd.DataFrame(data)
-    df.to_csv('saved_model.csv', index=False)
+    np.savez("model_weights.npz", W1=W1, b1=b1, W2=W2, b2=b2, accuracy=accuracy)
     
 def use_saved(X):
-    def open_model():
-        df = pd.read_csv('saved_model.csv')
-        W1 = df['W1'].dropna().to_numpy()
-        b1 = df['b1'].dropna().to_numpy()
-        W2 = df['W2'].dropna().to_numpy()
-        b2 = df['b2'].dropna().to_numpy()
-        accuracy = df['accuracy'].dropna().to_numpy()[0] if 'accuracy' in df.columns else None
-        return W1, b1, W2, b2, accuracy
-    W1_flat, b1_flat, W2_flat, b2_flat, accuracy = open_model()
+    def load_model():
+        data = np.load("model_weights.npz")
+        return data['W1'], data['b1'], data['W2'], data['b2'], data['accuracy'].item()
+    W1_flat, b1_flat, W2_flat, b2_flat, accuracy = load_model()
     
     W1 = W1_flat.reshape((10, 784))
     b1 = b1_flat.reshape((10, 1))
@@ -183,9 +156,9 @@ def run_model(X_train,Y_train,epochs,lr):
     save_model(W1, b1, W2, b2, accuracy)
     
 def run_saved(X):
-    use_saved(X)
-    _ , accuracy = use_saved(X_dev)
+    predictions, accuracy = use_saved(X)
     print("Accuracy:", accuracy)
+    return predictions
     
-#run_model(X_train,Y_train,2000,0.1)
+#run_model(X_train,Y_train,1000,0.1)
 #run_saved(X_dev)
